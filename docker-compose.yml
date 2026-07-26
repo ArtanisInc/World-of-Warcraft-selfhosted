@@ -1,0 +1,268 @@
+name: azerothcore-playerbots
+
+x-acore-build: &acore-build
+  context: .
+  dockerfile: Dockerfile
+  args:
+    ACORE_REPO: ${ACORE_REPO:-https://github.com/mod-playerbots/azerothcore-wotlk.git}
+    ACORE_BRANCH: ${ACORE_BRANCH:-Playerbot}
+    ALE_LUA_VERSION: ${ALE_LUA_VERSION:-lua52}
+    BUILD_TYPE: ${BUILD_TYPE:-Release}
+    BUILD_JOBS: ${BUILD_JOBS:-4}
+    USER_ID: ${USER_ID:-1000}
+    GROUP_ID: ${GROUP_ID:-1000}
+
+x-acore-environment: &acore-environment
+  AC_LOGIN_DATABASE_INFO: database;3306;${DB_USER:-acore};${DB_PASSWORD:?Copy .env.example to .env and set DB_PASSWORD};acore_auth
+  AC_WORLD_DATABASE_INFO: database;3306;${DB_USER:-acore};${DB_PASSWORD};acore_world
+  AC_CHARACTER_DATABASE_INFO: database;3306;${DB_USER:-acore};${DB_PASSWORD};acore_characters
+  AC_PLAYERBOTS_DATABASE_INFO: database;3306;${DB_USER:-acore};${DB_PASSWORD};acore_playerbots
+  AC_SOAP_USER: ${SOAP_USER:?Set SOAP_USER in .env}
+  AC_SOAP_PASS: ${SOAP_PASSWORD:?Set SOAP_PASSWORD in .env}
+  TZ: ${TZ:-Europe/Paris}
+
+x-logging: &default-logging
+  # "local" is Docker-specific. json-file is understood by Docker and by
+  # Podman (as an alias of its k8s-file backend).
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "5"
+
+services:
+  database:
+    image: docker.io/library/mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --max-allowed-packet=64M
+      - --innodb-buffer-pool-size=${MYSQL_INNODB_BUFFER_POOL_SIZE:-4G}
+      - --skip-log-bin
+      - --innodb-log-buffer-size=32M
+      - --innodb-flush-log-at-trx-commit=2
+      - --innodb-flush-method=O_DIRECT
+      - --innodb-io-capacity=500
+      - --innodb-io-capacity-max=2500
+      - --innodb-read-io-threads=4
+      - --innodb-write-io-threads=4
+      - --max-connections=200
+      - --thread-cache-size=50
+      - --table-open-cache=4000
+      - --sort-buffer-size=512K
+      - --join-buffer-size=512K
+      - --read-buffer-size=256K
+      - --read-rnd-buffer-size=512K
+      - --transaction-isolation=READ-COMMITTED
+    volumes:
+      - database:/var/lib/mysql
+    networks: [acore]
+    logging: *default-logging
+    healthcheck:
+      test: [CMD-SHELL, "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 20s
+
+  database-init:
+    image: docker.io/library/mysql:8.4
+    restart: "no"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      DB_USER: ${DB_USER:-acore}
+      DB_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./docker/mysql-init.sh:/usr/local/bin/mysql-init:ro,Z
+    entrypoint: [bash, /usr/local/bin/mysql-init]
+    depends_on:
+      database:
+        condition: service_healthy
+    networks: [acore]
+
+  database-preflight:
+    image: ${ACORE_OPERATIONS_IMAGE:-azerothcore-playerbots-operations:local}
+    security_opt: [label=disable]
+    build:
+      <<: *acore-build
+      target: operations
+    restart: "no"
+    user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
+    environment:
+      DB_HOST: database
+      DB_USER: ${DB_USER:-acore}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DATABASE_MIGRATION_STATE_FILE: /azerothcore/env/dist/etc/.database-preflight.sha256
+    entrypoint: [python3, /azerothcore/tools/database_preflight.py]
+    volumes:
+      - config:/azerothcore/env/dist/etc:z
+    depends_on:
+      database:
+        condition: service_healthy
+    networks: [acore]
+
+  client-data:
+    security_opt: [label=disable]
+    build:
+      <<: *acore-build
+      target: client-data
+    restart: "no"
+    volumes:
+      - client-data:/data:z
+    command: [bash, -c, "source /azerothcore/apps/installer/includes/functions.sh && inst_download_client_data && touch /data/.client-data.ready"]
+
+  db-import:
+    security_opt: [label=disable]
+    build:
+      <<: *acore-build
+      target: db-import
+    restart: "no"
+    env_file: [docker/acore.env]
+    environment:
+      <<: *acore-environment
+    volumes:
+      - config:/azerothcore/env/dist/etc:z
+      - logs:/azerothcore/env/dist/logs:z
+    depends_on:
+      database:
+        condition: service_healthy
+    networks: [acore]
+
+  database-post-import:
+    image: ${ACORE_OPERATIONS_IMAGE:-azerothcore-playerbots-operations:local}
+    security_opt: [label=disable]
+    build:
+      <<: *acore-build
+      target: operations
+    restart: "no"
+    user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
+    environment:
+      DB_HOST: database
+      DB_USER: ${DB_USER:-acore}
+      DB_PASSWORD: ${DB_PASSWORD}
+      SOAP_USER: ${SOAP_USER:?Set SOAP_USER in .env}
+      SOAP_PASSWORD: ${SOAP_PASSWORD:?Set SOAP_PASSWORD in .env}
+      DATABASE_MIGRATION_STATE_FILE: /azerothcore/env/dist/etc/.database-preflight.sha256
+      BETTER_PROFESSIONS_HERBALISM_MULTIPLIER: ${BETTER_PROFESSIONS_HERBALISM_MULTIPLIER:-6}
+      BETTER_PROFESSIONS_MINING_MULTIPLIER: ${BETTER_PROFESSIONS_MINING_MULTIPLIER:-6}
+    entrypoint: [python3, /azerothcore/tools/database_post_import.py]
+    volumes:
+      - config:/azerothcore/env/dist/etc:z
+    depends_on:
+      database:
+        condition: service_healthy
+    networks: [acore]
+
+  realm-init:
+    image: docker.io/library/mysql:8.4
+    security_opt: [label=disable]
+    restart: "no"
+    environment:
+      DB_USER: ${DB_USER:-acore}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REALMLIST_IP: ${REALMLIST_IP:-127.0.0.1}
+    volumes:
+      - ./docker/realm-init.sh:/usr/local/bin/realm-init:ro,Z
+      - config:/state:z
+    entrypoint: [bash, /usr/local/bin/realm-init]
+    depends_on:
+      database:
+        condition: service_healthy
+    networks: [acore]
+
+  authserver:
+    security_opt: [label=disable]
+    build:
+      <<: *acore-build
+      target: authserver
+    restart: unless-stopped
+    stop_grace_period: 30s
+    env_file: [docker/acore.env]
+    environment:
+      <<: *acore-environment
+    ports:
+      - ${BIND_ADDRESS:-127.0.0.1}:${AUTH_PORT:-3724}:3724
+    volumes:
+      - config:/azerothcore/env/dist/etc:z
+      - logs:/azerothcore/env/dist/logs:z
+    depends_on:
+      database:
+        condition: service_healthy
+    networks: [acore]
+    logging: *default-logging
+    healthcheck:
+      test: [CMD-SHELL, "timeout 3 bash -c '</dev/tcp/127.0.0.1/3724'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  worldserver:
+    security_opt: [label=disable]
+    build:
+      <<: *acore-build
+      target: worldserver
+    restart: unless-stopped
+    stop_grace_period: 2m
+    stdin_open: true
+    tty: true
+    env_file: [docker/acore.env]
+    environment:
+      <<: *acore-environment
+    ports:
+      - ${BIND_ADDRESS:-127.0.0.1}:${WORLD_PORT:-8085}:8085
+      - 127.0.0.1:${SOAP_PORT:-7878}:7878
+    volumes:
+      - config:/azerothcore/env/dist/etc:z
+      - logs:/azerothcore/env/dist/logs:z
+      - client-data:/azerothcore/env/dist/data:ro,z
+    depends_on:
+      authserver:
+        condition: service_healthy
+      database-post-import:
+        condition: service_completed_successfully
+    networks: [acore]
+    logging: *default-logging
+    healthcheck:
+      test: [CMD-SHELL, "timeout 3 bash -c '</dev/tcp/127.0.0.1/8085'"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 10m
+
+  operations:
+    image: ${ACORE_OPERATIONS_IMAGE:-azerothcore-playerbots-operations:local}
+    security_opt: [label=disable]
+    build:
+      <<: *acore-build
+      target: operations
+    profiles: [tools]
+    user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
+    env_file: [docker/acore.env]
+    environment:
+      <<: *acore-environment
+      DB_HOST: database
+      DB_USER: ${DB_USER:-acore}
+      DB_PASSWORD: ${DB_PASSWORD}
+      SOAP_USER: ${SOAP_USER}
+      SOAP_PASSWORD: ${SOAP_PASSWORD}
+      SOAP_PORT: "7878"
+    volumes:
+      - config:/azerothcore/env/dist/etc:z
+      - logs:/azerothcore/env/dist/logs:z
+    depends_on:
+      database:
+        condition: service_healthy
+    networks: [acore]
+
+networks:
+  acore:
+    driver: bridge
+
+volumes:
+  database:
+  client-data:
+  config:
+  logs:

@@ -1,0 +1,14 @@
+# Secrets
+.env
+
+
+# WoW data
+data/data.zip
+
+# Runtime and backups
+backups/
+logs/
+
+*.log
+__pycache__/
+*.pyc
