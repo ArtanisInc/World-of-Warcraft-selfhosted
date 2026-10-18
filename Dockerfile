@@ -70,6 +70,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=build --chown=acore:acore /azerothcore/env/dist/etc/ /azerothcore/env/ref/etc/
 COPY --from=build --chown=acore:acore /azerothcore/env/dist/build-manifest.tsv /azerothcore/env/dist/build-manifest.tsv
+COPY --chown=acore:acore THIRD_PARTY_NOTICES.md /azerothcore/THIRD_PARTY_NOTICES.md
 COPY --from=build --chown=acore:acore --chmod=755 /azerothcore/apps/docker/entrypoint.sh /azerothcore/upstream-entrypoint.sh
 RUN sed -i 's/cp -rnv /cp -rv --update=none /; s/cp -vn /cp -v --update=none /' /azerothcore/upstream-entrypoint.sh
 COPY --chown=acore:acore --chmod=755 docker/entrypoint.sh /azerothcore/entrypoint.sh

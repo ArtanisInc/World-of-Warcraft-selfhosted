@@ -1,7 +1,7 @@
 # AzerothCore Playerbots — Docker et Podman
 
 Environnement Compose validé avec Docker et Podman pour compiler et exécuter
-AzerothCore WoW 3.3.5a, la branche Playerbot, 52 modules additionnels et trois
+AzerothCore WoW 3.3.5a, la branche Playerbot, 55 modules additionnels et trois
 scripts Lua personnalisés.
 
 Les images de compilation et d'exécution reposent sur Ubuntu 26.04. Le core
@@ -46,7 +46,7 @@ Les scripts et le `Makefile` détectent automatiquement Docker Compose ou
 Podman Compose. Pour imposer un moteur, définissez `COMPOSE_COMMAND`, par
 exemple `COMPOSE_COMMAND="podman compose" make up`.
 
-Le premier lancement est long : Docker clone 52 modules, compile le core,
+Le premier lancement est long : Docker clone 55 modules, compile le core,
 importe les bases et télécharge les données client.
 
 ```bash
@@ -109,7 +109,7 @@ dans `.env.example`. Les variables les plus importantes sont :
 
 ## Modules inclus
 
-Les 52 modules suivants sont clonés lors du build. Les modules C++ sont intégrés
+Les 55 modules suivants sont clonés lors du build. Les modules C++ sont intégrés
 à `worldserver` ; les modules SQL-only sont appliqués pendant l'import de la base :
 
 | # | Module | Fonction | Dépôt |
@@ -158,17 +158,17 @@ Les 52 modules suivants sont clonés lors du build. Les modules C++ sont intégr
 | 42 | `mod-flightpath-discovery` | Ajoute des tableaux près des maîtres de vol pour acheter et apprendre des trajets voisins configurés, sans téléportation. | [bl1tzkr13g/mod-flightpath-discovery](https://github.com/bl1tzkr13g/mod-flightpath-discovery) |
 | 43 | `mod-forever-hunter` | Ajoute l’échelle des familiers, Lone Wolf, Summon Hawk, la retenue des familiers en donjon et les effets Hunter de Shadowstrike/Thunderstrike. | [buildthehomelab/wow-mod-forever-hunter](https://github.com/buildthehomelab/wow-mod-forever-hunter) |
 | 44 | `mod-raid-clear` | Ajoute des stratégies Playerbot spécialisées pour les raids, les boss et les mécaniques de raid. | [buildthehomelab/wow-mod-raid-clear](https://github.com/buildthehomelab/wow-mod-raid-clear) |
-| 44a | `mod-lost-legendaries` | Réintroduit plusieurs objets légendaires oubliés dans les raids et quêtes. | [buildthehomelab/wow-mod-lost-legendaries](https://github.com/buildthehomelab/wow-mod-lost-legendaries) |
-| 44b | `mod-forever-rogue` | Conserve les points de combo du voleur lors des changements de cible. | [buildthehomelab/wow-mod-forever-rogue](https://github.com/buildthehomelab/wow-mod-forever-rogue) |
-| 44c | `mod-forever-periodic-crit` | Autorise les critiques des ticks DoT/HoT selon les règles WoW Forever. | [buildthehomelab/wow-mod-forever-periodic-crit](https://github.com/buildthehomelab/wow-mod-forever-periodic-crit) |
-| 45 | `mod-lfg-progression` | Verrouille la file LFG selon la progression Vanilla/TBC/WotLK du personnage et des Playerbots. | [buildthehomelab/wow-mod-lfg-progression](https://github.com/buildthehomelab/wow-mod-lfg-progression) |
-| 46 | `mod-forever-journal` | Ajoute un journal en jeu des donjons, monstres, quêtes, butin, apparences et lore. Remplace `mod-npc-finder`. | [buildthehomelab/wow-mod-forever-journal](https://github.com/buildthehomelab/wow-mod-forever-journal) |
-| 47 | `mod-beast-collection` | Ajoute la collection, le dex et les récompenses de familiers de chasseur. | [buildthehomelab/wow-mod-beast-collection](https://github.com/buildthehomelab/wow-mod-beast-collection) |
-| 48 | `mod-playerbots-pvp-life` | Anime les Playerbots avec du PvP mondial, des fronts, des défenses de capitales et des duels. | [vrzgames/mod-playerbots-pvp-life](https://github.com/vrzgames/mod-playerbots-pvp-life) |
-| 49 | `mod-playerbots-city-life` | Anime les capitales et villes avec des Playerbots résidents, activités, déplacements et points d’intérêt. | [vrzgames/mod-playerbots-city-life](https://github.com/vrzgames/mod-playerbots-city-life) |
-| 50 | `mod-retail-ah` | Remplace la fenêtre d’hôtel des ventes par une interface retail, avec filtres, progression individuelle, transmog, registre des ventes et compatibilité AHBot. | [buildthehomelab/wow-mod-retail-ah](https://github.com/buildthehomelab/wow-mod-retail-ah) |
-| 51 | `mod-retail-professions` | Remplace la fenêtre des métiers par une interface retail, avec recettes, suivi, sources, milling/prospecting et statistiques de craft. | [buildthehomelab/wow-mod-retail-professions](https://github.com/buildthehomelab/wow-mod-retail-professions) |
-| 52 | `mod-black-market` | Ajoute un hôtel des ventes noir avec enchères quotidiennes, montures, compagnons et objets rares, accessible auprès de Mister Chu à Baie-du-Butin. | [buildthehomelab/wow-mod-black-market](https://github.com/buildthehomelab/wow-mod-black-market) |
+| 45 | `mod-lost-legendaries` | Réintroduit plusieurs objets légendaires oubliés dans les raids et quêtes. | [buildthehomelab/wow-mod-lost-legendaries](https://github.com/buildthehomelab/wow-mod-lost-legendaries) |
+| 46 | `mod-forever-rogue` | Conserve les points de combo du voleur lors des changements de cible. | [buildthehomelab/wow-mod-forever-rogue](https://github.com/buildthehomelab/wow-mod-forever-rogue) |
+| 47 | `mod-forever-periodic-crit` | Autorise les critiques des ticks DoT/HoT selon les règles WoW Forever. | [buildthehomelab/wow-mod-forever-periodic-crit](https://github.com/buildthehomelab/wow-mod-forever-periodic-crit) |
+| 48 | `mod-lfg-progression` | Verrouille la file LFG selon la progression Vanilla/TBC/WotLK du personnage et des Playerbots. | [buildthehomelab/wow-mod-lfg-progression](https://github.com/buildthehomelab/wow-mod-lfg-progression) |
+| 49 | `mod-forever-journal` | Ajoute un journal en jeu des donjons, monstres, quêtes, butin, apparences et lore. Remplace `mod-npc-finder`. | [buildthehomelab/wow-mod-forever-journal](https://github.com/buildthehomelab/wow-mod-forever-journal) |
+| 50 | `mod-beast-collection` | Ajoute la collection, le dex et les récompenses de familiers de chasseur. | [buildthehomelab/wow-mod-beast-collection](https://github.com/buildthehomelab/wow-mod-beast-collection) |
+| 51 | `mod-playerbots-pvp-life` | Anime les Playerbots avec du PvP mondial, des fronts, des défenses de capitales et des duels. | [vrzgames/mod-playerbots-pvp-life](https://github.com/vrzgames/mod-playerbots-pvp-life) |
+| 52 | `mod-playerbots-city-life` | Anime les capitales et villes avec des Playerbots résidents, activités, déplacements et points d’intérêt. | [vrzgames/mod-playerbots-city-life](https://github.com/vrzgames/mod-playerbots-city-life) |
+| 53 | `mod-retail-ah` | Remplace la fenêtre d’hôtel des ventes par une interface retail, avec filtres, progression individuelle, transmog, registre des ventes et compatibilité AHBot. | [buildthehomelab/wow-mod-retail-ah](https://github.com/buildthehomelab/wow-mod-retail-ah) |
+| 54 | `mod-retail-professions` | Remplace la fenêtre des métiers par une interface retail, avec recettes, suivi, sources, milling/prospecting et statistiques de craft. | [buildthehomelab/wow-mod-retail-professions](https://github.com/buildthehomelab/wow-mod-retail-professions) |
+| 55 | `mod-black-market` | Ajoute un hôtel des ventes noir avec enchères quotidiennes, montures, compagnons et objets rares, accessible auprès de Mister Chu à Baie-du-Butin. | [buildthehomelab/wow-mod-black-market](https://github.com/buildthehomelab/wow-mod-black-market) |
 
 ### Maisons de guilde
 
