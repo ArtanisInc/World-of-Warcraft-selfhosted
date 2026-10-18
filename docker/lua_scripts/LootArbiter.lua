@@ -12,50 +12,6 @@ local STAT_ID_MAP = {
     [14]="PARRY", [15]="BLOCK", [30]="ARM", [44]="ARPEN"
 }
 
--- Helper to check if a spec should be compared against both weapon slots
-local function CanDualWield(spec)
-    local dwSpecs = {
-        ["Hunter"] = true,
-        ["Rogue"] = true,
-        ["Shamy Enh"] = true,
-        ["War Fury"] = true,
-        ["DK Frost"] = true
-    }
-    return dwSpecs[spec] or false
-end
-
--- Maps Weapon Subclasses to Skill IDs for HasSkill check
-local WEAPON_SKILL_MAP = {
-    [0]  = 44,  -- One-Handed Axes
-    [1]  = 172, -- Two-Handed Axes
-    [2]  = 45,  -- Bows
-    [3]  = 46,  -- Guns
-    [4]  = 54,  -- One-Handed Maces
-    [5]  = 160, -- Two-Handed Maces
-    [6]  = 229, -- Polearms
-    [7]  = 55,  -- One-Handed Swords
-    [8]  = 172, -- Two-Handed Swords
-    [10] = 136, -- Staves
-    [13] = 473, -- Fist Weapons
-    [15] = 173, -- Daggers
-    [18] = 226, -- Crossbows
-    [19] = 166, -- Wands
-}
-
--- Maps Player Class ID to their maximum allowed Armor Subclass
-local MAX_ARMOR_MAP = {
-    [1]  = 4, -- Warrior: Plate
-    [2]  = 4, -- Paladin: Plate
-    [3]  = 3, -- Hunter: Mail
-    [4]  = 2, -- Rogue: Leather
-    [5]  = 1, -- Priest: Cloth
-    [6]  = 4, -- DK: Plate
-    [7]  = 3, -- Shaman: Mail
-    [8]  = 1, -- Mage: Cloth
-    [9]  = 1, -- Warlock: Cloth
-    [11] = 2, -- Druid: Leather
-}
-
 local INV_TO_SLOT = {
     [1]  = 0,  -- Head
     [2]  = 1,  -- Neck
@@ -141,10 +97,23 @@ local function GetHeuristicSpec(player)
 end
 
 -- [4] CORE SCORING ENGINE
-local function GetScoreByEntry(entry, weights)
+local ITEM_TEMPLATE_CACHE = {}
+
+local function GetItemTemplateRow(entry)
+    local cached = ITEM_TEMPLATE_CACHE[entry]
+    if cached ~= nil then
+        return cached or nil
+    end
+
     local query = WorldDBQuery(string.format("SELECT * FROM item_template WHERE entry = %d", entry))
-    if not query then return 0, nil end
-    local row = query:GetRow()
+    local row = query and query:GetRow() or false
+    ITEM_TEMPLATE_CACHE[entry] = row
+    return row or nil
+end
+
+local function GetScoreByEntry(entry, weights)
+    local row = GetItemTemplateRow(entry)
+    if not row then return 0, nil end
 
     local score = 0
     -- Standard Stat Scoring
@@ -164,51 +133,52 @@ local function GetScoreByEntry(entry, weights)
 
     -- Weapon Damage Scaling
     if row.class == 2 and weights.WPW then
-        score = score + (row.dmg_max1 * weights.WPW)
+        score = score + ((row.dmg_max1 or 0) * weights.WPW)
     end
 
     return score, row
 end
 
--- [5] THE DELAYED EXECUTION
-local function ExecuteDelayedTransfer(wGUID, tGUID, itemEntry, improvement)
-    local winner = GetPlayerByGUID(wGUID)
-    local target = GetPlayerByGUID(tGUID)
+-- [5] SAFE AWARD NOTICE
+-- Eluna cannot move an item instance between inventories. Recreating it loses
+-- its instance data (enchantments, gems, durability and random properties),
+-- while removing by entry can delete a different item. Never transfer/delete
+-- loot from Lua: announce the recommendation and leave the completed roll intact.
+local function AnnounceRecommendation(winner, target, itemName, improvement)
+    local group = winner:GetGroup()
+    if not group then return end
 
-    if not winner or not target then return end
-
-    local item = winner:GetItemByEntry(itemEntry)
-
-    if item then
-        local itemName = item:GetName()
-        local group = winner:GetGroup()
-        local suffixId = item:GetRandomSuffix()
-
-        print(LOG_PREFIX .. "Executing transfer: " .. itemName .. " to " .. target:GetName())
-
-        local addedItem = target:AddItem(itemEntry, 1, suffixId)
-
-        if not addedItem then
-            SendMail("Arbiter Loot Distribution", "Your bags were full. Here is your upgrade: " .. itemName, target:GetGUIDLow(), 0, 61, 0, 0, 0, itemEntry, 1, suffixId)
-            target:SendBroadcastMessage(COLOR_PREFIX .. "Your bags were full! |cff00ff00" .. itemName .. "|r has been sent to your mail.")
-        end
-
-        winner:RemoveItem(item, 1)
-
-        if group then
-            local announce = string.format(COLOR_PREFIX .. "Arbiter: %s (+%.2f) transferred to %s.", itemName, improvement, target:GetName())
-            local members = group:GetMembers()
-            for _, member in ipairs(members) do
-                member:SendBroadcastMessage(announce)
-            end
-        end
+    local announce = string.format(
+        COLOR_PREFIX .. "Arbiter recommendation: %s (+%.2f) would suit %s. Loot remains with roll winner %s.",
+        itemName, improvement, target:GetName(), winner:GetName()
+    )
+    for _, member in ipairs(group:GetMembers()) do
+        member:SendBroadcastMessage(announce)
     end
 end
 
--- Helper to check talent status for specialized weapon handling
-local function HasTalent(player, talentId)
-    local activeSpec = player:GetActiveSpec() or 0
-    return player:HasTalent(talentId, activeSpec)
+local function GetCurrentScore(member, template, weights)
+    local inventoryType = template.InventoryType
+    local function ScoreSlot(slot)
+        local equipped = member:GetEquippedItemBySlot(slot)
+        return equipped and GetScoreByEntry(equipped:GetEntry(), weights) or 0
+    end
+
+    if inventoryType == 11 then -- Finger: compare with weaker ring.
+        return math.min(ScoreSlot(10), ScoreSlot(11))
+    end
+    if inventoryType == 12 then -- Trinket: compare with weaker trinket.
+        return math.min(ScoreSlot(12), ScoreSlot(13))
+    end
+    if inventoryType == 13 then -- One-hand: use off-hand only when Dual Wield is learned.
+        if member:HasSpell(674) then
+            return math.min(ScoreSlot(15), ScoreSlot(16))
+        end
+        return ScoreSlot(15)
+    end
+
+    local slot = INV_TO_SLOT[inventoryType]
+    return slot and ScoreSlot(slot) or 0
 end
 
 -- [6] CORE EVALUATION & REWARD HANDLER
@@ -231,65 +201,22 @@ local function EvaluateAndTransferLoot(winner, item)
             local weights = MASTER_WEIGHTS[spec]
 
             if weights then
-                local isEligible = true
-
-                -- [A] WEAPON SKILL & TALENT RESTRICTIONS
-                if template.class == 2 then
-                    -- Skill check
-                    local requiredSkill = WEAPON_SKILL_MAP[template.subclass]
-                    if requiredSkill and not member:HasSkill(requiredSkill) then
-                        isEligible = false
-                    end
-
-                    -- New Talent-Specific Weapon Restrictions
-                    local is2H = (template.InventoryType == 17)
-                    local is1H = (template.InventoryType == 13 or template.InventoryType == 21 or template.InventoryType == 22)
-
-                    if spec == "Shamy Enh" then
-                        if not HasTalent(member, 23588) and not is2H then isEligible = false end
-                        if HasTalent(member, 23588) and not is1H then isEligible = false end
-                    end
-
-                    if spec == "War Fury" then
-                        if not HasTalent(member, 46917) and not is1H then isEligible = false end
-                        if HasTalent(member, 46917) and not is2H then isEligible = false end
-                    end
-                end
-
-                -- [B] ARMOR TYPE CHECK
-                if template.class == 4 then
-                    local maxArmor = MAX_ARMOR_MAP[member:GetClass()] or 1
-                    if template.subclass > maxArmor then isEligible = false end
-                end
+                -- CanUseItem validates the real character restrictions: class,
+                -- race, level, proficiency, reputation and requirements.
+                -- ALE's CanUseItem binding accepts the item entry ID, not an
+                -- Item userdata. Passing the rolled object raises a Lua
+                -- binding type error and aborts recommendation processing.
+                local isEligible = member:CanUseItem(itemEntry)
 
                 -- [C] SPELL POWER SANITY CHECK
                 local hasSP = false
                 for i = 1, 10 do if template["stat_type"..i] == 45 then hasSP = true break end end
                 if hasSP and (weights.SP or 0) <= 0 then isEligible = false end
 
-                -- [D] SPEC OPTIMIZATION
-                local isBadOpt = (template.InventoryType == 17 and
-                    (spec == "Pally Prot" or spec == "War Prot" or spec == "DK Frost" or spec == "Shamy Enh"))
-
                 -- FINAL VALIDATION AND SCORING
-                if isEligible and not isBadOpt then
+                if isEligible then
                     local lootedScore = GetScoreByEntry(itemEntry, weights)
-                    local currentScore = 0
-
-                    if (template.InventoryType == 13 or template.InventoryType == 21 or template.InventoryType == 22) and CanDualWield(spec) then
-                        local mhItem = member:GetEquippedItemBySlot(15)
-                        local ohItem = member:GetEquippedItemBySlot(16)
-                        local mhScore = mhItem and GetScoreByEntry(mhItem:GetEntry(), weights) or 0
-                        local ohScore = ohItem and GetScoreByEntry(ohItem:GetEntry(), weights) or 0
-
-                        if template.InventoryType == 21 then currentScore = mhScore
-                        elseif template.InventoryType == 22 then currentScore = ohScore
-                        else currentScore = math.min(mhScore, ohScore) end
-                    else
-                        local slot = INV_TO_SLOT[template.InventoryType]
-                        local currentItem = slot and member:GetEquippedItemBySlot(slot)
-                        currentScore = currentItem and GetScoreByEntry(currentItem:GetEntry(), weights) or 0
-                    end
+                    local currentScore = GetCurrentScore(member, template, weights)
 
                     local improvement = lootedScore - currentScore
                     if improvement > maxImprovement then
@@ -302,9 +229,7 @@ local function EvaluateAndTransferLoot(winner, item)
     end
 
     if bestPlayer and bestPlayer:GetGUID() ~= winner:GetGUID() and maxImprovement > 0 then
-        local wGUID = winner:GetGUID()
-        local tGUID = bestPlayer:GetGUID()
-        CreateLuaEvent(function() ExecuteDelayedTransfer(wGUID, tGUID, itemEntry, maxImprovement) end, 200, 1)
+        AnnounceRecommendation(winner, bestPlayer, item:GetName(), maxImprovement)
     end
 end
 

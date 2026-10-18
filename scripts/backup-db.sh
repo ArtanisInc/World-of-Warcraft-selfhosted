@@ -28,7 +28,7 @@ trap 'rm -rf "$TEMP_DIR"' EXIT
 
 for database in acore_auth acore_characters acore_world acore_playerbots; do
   echo "[INFO] Backing up $database"
-  docker compose -f "$ROOT_DIR/docker-compose.yml" exec -T database \
+  "$ROOT_DIR/scripts/compose.sh" -f "$ROOT_DIR/docker-compose.yml" exec -T database \
     sh -c 'exec mysqldump --single-transaction --quick --routines --triggers -uroot -p"$MYSQL_ROOT_PASSWORD" "$1"' \
     sh "$database" | gzip -9 >"$TEMP_DIR/$database.sql.gz"
   gzip -t "$TEMP_DIR/$database.sql.gz"

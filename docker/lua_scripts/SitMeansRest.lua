@@ -1,68 +1,86 @@
 -- Source: https://github.com/Brytenwally/SitMeansRest
--- Revision: 52a119dd4ca307c5ff95740029156d604bd03713
+-- Revised for AzerothCore Eluna: each rest session owns only its own timer.
 
 local CONFIG = {
     DURATION = 20,          -- Seconds to rest
     CHECK_INTERVAL = 500,   -- Check for movement every 500ms
     REGEN_AURA = 25990,     -- Graccu's Mistletoe (Fruitcake effect)
-    EVENT_ID = 99100,
     SIT_EMOTE_ID = 86,      -- TEXT_EMOTE_SIT
 }
 
-local function StopResting(player)
+-- Eluna Player:RemoveEvents() removes every Lua timer owned by the player.
+-- Keep our timer id locally so this script never cancels timers from modules.
+local REST_STATES = {}
+
+local function GetStateKey(player)
+    return player:GetGUIDLow()
+end
+
+local function StopResting(player, announce)
     if not player then return end
 
+    local key = GetStateKey(player)
+    local state = REST_STATES[key]
+    if state and state.eventId then
+        player:RemoveEventById(state.eventId)
+    end
+    REST_STATES[key] = nil
     player:RemoveAura(CONFIG.REGEN_AURA)
-    player:RemoveEvents(CONFIG.EVENT_ID)
-    player:SetData("RestX", nil)
-    player:SetData("RestY", nil)
-    player:SendAreaTriggerMessage("You stand up.")
+
+    if announce then
+        player:SendAreaTriggerMessage("You stand up.")
+    end
 end
 
 local function RestMovementCheck(event, delay, repeats, player)
-    if not player or not player:HasAura(CONFIG.REGEN_AURA) then
-        StopResting(player)
+    if not player then return end
+
+    local state = REST_STATES[GetStateKey(player)]
+    if not state or not player:HasAura(CONFIG.REGEN_AURA) then
+        StopResting(player, false)
         return
     end
 
     local x, y = player:GetLocation()
-    local oldX = player:GetData("RestX") or 0
-    local oldY = player:GetData("RestY") or 0
-
-    -- Cancel if player moves more than 0.1 yards
-    if math.abs(x - oldX) > 0.1 or math.abs(y - oldY) > 0.1 then
-        StopResting(player)
+    -- Cancel if player moves more than 0.1 yards.
+    if math.abs(x - state.x) > 0.1 or math.abs(y - state.y) > 0.1 then
+        StopResting(player, true)
         return
     end
 
     if repeats == 1 then
-        player:RemoveAura(CONFIG.REGEN_AURA)
+        StopResting(player, false)
         player:SendAreaTriggerMessage("|cff00ff00Fully Rested!|r")
     end
 end
 
+local function StartResting(player)
+    StopResting(player, false)
+
+    local x, y = player:GetLocation()
+    player:AddAura(CONFIG.REGEN_AURA, player)
+    player:SendAreaTriggerMessage("|cff00ccffResting...|r")
+
+    local eventId = player:RegisterEvent(RestMovementCheck, CONFIG.CHECK_INTERVAL, CONFIG.DURATION * 2)
+    REST_STATES[GetStateKey(player)] = { x = x, y = y, eventId = eventId }
+end
+
 local function OnEmote(event, player, textEmote, emoteNum, guid)
-    if textEmote == CONFIG.SIT_EMOTE_ID then
-        if player:IsInCombat() then
-            player:SendBroadcastMessage("You can't rest while in combat!")
-            return
-        end
+    if textEmote ~= CONFIG.SIT_EMOTE_ID then return end
 
-        -- Record initial position
-        local x, y = player:GetLocation()
-        player:SetData("RestX", x)
-        player:SetData("RestY", y)
-
-        -- Apply Regen Aura (Fruitcake effect)
-        player:AddAura(CONFIG.REGEN_AURA, player)
-        player:SendAreaTriggerMessage("|cff00ccffResting...|r")
-
-        -- Start the movement checker
-        player:RemoveEvents(CONFIG.EVENT_ID)
-        player:RegisterEvent(RestMovementCheck, CONFIG.CHECK_INTERVAL, CONFIG.DURATION * 2, CONFIG.EVENT_ID)
+    if player:IsInCombat() then
+        player:SendBroadcastMessage("You can't rest while in combat!")
+        return
     end
+
+    StartResting(player)
+end
+
+local function OnLogout(event, player)
+    StopResting(player, false)
 end
 
 RegisterPlayerEvent(24, OnEmote)
+RegisterPlayerEvent(4, OnLogout) -- PLAYER_EVENT_ON_LOGOUT
 
 print("[ALE] SitMeansRest enabled via /sit")

@@ -47,6 +47,13 @@ def main() -> int:
     )
     query("accounts", "SELECT COUNT(*) FROM account", "acore_auth")
     query("characters", "SELECT COUNT(*) FROM characters", "acore_characters")
+    query(
+        "orphaned item templates",
+        "SELECT ii.itemEntry,COUNT(*) AS instances "
+        "FROM acore_characters.item_instance ii "
+        "LEFT JOIN acore_world.item_template it ON it.entry=ii.itemEntry "
+        "WHERE it.entry IS NULL GROUP BY ii.itemEntry ORDER BY instances DESC LIMIT 50",
+    )
 
     section("SOAP runtime")
     try:

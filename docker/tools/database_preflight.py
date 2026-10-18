@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import time
@@ -12,7 +13,6 @@ from pathlib import Path
 from common import ToolError, mysql, scalar, table_exists, target_world_sql_files, world_sql_digest
 
 STATE_FILE = Path(os.getenv("DATABASE_MIGRATION_STATE_FILE", "/azerothcore/env/dist/etc/.database-preflight.sha256"))
-READY_FILE = STATE_FILE.with_name(".database-preflight.ready")
 TABLE_ID_COLUMN = {
     "gameobject": "guid",
     "creature": "guid",
@@ -39,8 +39,34 @@ def candidates(path: Path):
                 yield table, int(first)
 
 
+def load_owned_ids() -> tuple[str | None, set[tuple[str, int]]]:
+    if not STATE_FILE.is_file():
+        return None, set()
+    try:
+        state = json.loads(STATE_FILE.read_text())
+        digest = state.get("digest")
+        owned = {
+            (str(table), int(identifier))
+            for table, identifier in state.get("owned_ids", [])
+            if str(table) in TABLE_ID_COLUMN
+        }
+        return digest if isinstance(digest, str) else None, owned
+    except (ValueError, TypeError, json.JSONDecodeError):
+        # Legacy digest files are safe only for their exact source revision.
+        return STATE_FILE.read_text().strip(), set()
+
+
+def write_state(digest: str, owned_ids: set[tuple[str, int]]) -> None:
+    payload = {
+        "digest": digest,
+        "owned_ids": sorted([table, identifier] for table, identifier in owned_ids),
+    }
+    temporary = STATE_FILE.with_name(f".{STATE_FILE.name}.tmp")
+    temporary.write_text(json.dumps(payload, sort_keys=True) + "\n")
+    temporary.replace(STATE_FILE)
+
+
 def main() -> int:
-    READY_FILE.unlink(missing_ok=True)
     for attempt in range(120):
         try:
             mysql("SELECT 1", "acore_world")
@@ -53,10 +79,11 @@ def main() -> int:
             time.sleep(2)
 
     digest = world_sql_digest()
-    if STATE_FILE.is_file() and STATE_FILE.read_text().strip() == digest:
-        READY_FILE.touch()
+    previous_digest, owned_ids = load_owned_ids()
+    if previous_digest == digest:
         print("[OK] World SQL precheck already validated for the current module sources.")
         return 0
+
     found: dict[tuple[str, int], list[str]] = defaultdict(list)
     for path in target_world_sql_files():
         for table, identifier in candidates(path):
@@ -65,7 +92,7 @@ def main() -> int:
     conflicts = 0
     existing_tables = {table for table in TABLE_ID_COLUMN if table_exists("acore_world", table)}
     for (table, identifier), sources in sorted(found.items()):
-        if table not in existing_tables:
+        if table not in existing_tables or (table, identifier) in owned_ids:
             continue
         column = TABLE_ID_COLUMN[table]
         exists = scalar(
@@ -82,10 +109,12 @@ def main() -> int:
     if conflicts:
         print(f"[ERROR] SQL world ID precheck failed with {conflicts} conflict(s).")
         return 1
-    READY_FILE.touch()
+
+    # Keep provenance for every previously approved module ID. A later module
+    # update may safely reuse its own IDs, but still rejects unrelated data.
+    write_state(digest, owned_ids | set(found))
     print(f"[OK] SQL world ID precheck passed ({len(found)} unique IDs checked).")
     return 0
-
 
 if __name__ == "__main__":
     try:

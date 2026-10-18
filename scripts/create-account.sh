@@ -5,5 +5,5 @@ if [[ $# -ne 2 ]]; then
   echo "Usage: $0 <username> <password>" >&2
   exit 2
 fi
-docker compose --profile tools -f "$ROOT_DIR/docker-compose.yml" run --rm -T operations \
+"$ROOT_DIR/scripts/compose.sh" --profile tools -f "$ROOT_DIR/docker-compose.yml" run --rm -T operations \
   python3 /azerothcore/tools/admin.py create-account "$1" "$2"

@@ -1,7 +1,7 @@
 # AzerothCore Playerbots — Docker et Podman
 
 Environnement Compose validé avec Docker et Podman pour compiler et exécuter
-AzerothCore WoW 3.3.5a, la branche Playerbot, 37 modules additionnels et trois
+AzerothCore WoW 3.3.5a, la branche Playerbot, 52 modules additionnels et trois
 scripts Lua personnalisés.
 
 Les images de compilation et d'exécution reposent sur Ubuntu 26.04. Le core
@@ -42,12 +42,11 @@ Avec Podman :
 podman compose up -d --build
 ```
 
-Les scripts et le `Makefile` emploient la commande `docker compose`. Sous
-Podman, ils fonctionnent directement si le paquet de compatibilité
-`podman-docker` est installé. Sans ce paquet, utilisez les commandes
-`podman compose` indiquées dans ce document.
+Les scripts et le `Makefile` détectent automatiquement Docker Compose ou
+Podman Compose. Pour imposer un moteur, définissez `COMPOSE_COMMAND`, par
+exemple `COMPOSE_COMMAND="podman compose" make up`.
 
-Le premier lancement est long : Docker clone 37 modules, compile le core,
+Le premier lancement est long : Docker clone 52 modules, compile le core,
 importe les bases et télécharge les données client.
 
 ```bash
@@ -107,11 +106,10 @@ dans `.env.example`. Les variables les plus importantes sont :
 | `BUILD_JOBS` | compilations C++ parallèles | `4`, à réduire si la RAM est limitée |
 | `DB_BACKUP_RETENTION` | nombre de sauvegardes conservées | `7`, ou `0` pour tout conserver |
 | `ALE_LUA_VERSION` | moteur Lua compilé pour ALE | `lua52` |
-| `ACORE_REPO` / `ACORE_BRANCH` | source du core Playerbots | valeurs de `.env.example` |
 
 ## Modules inclus
 
-Les 37 modules suivants sont clonés lors du build. Les modules C++ sont intégrés
+Les 52 modules suivants sont clonés lors du build. Les modules C++ sont intégrés
 à `worldserver` ; les modules SQL-only sont appliqués pendant l'import de la base :
 
 | # | Module | Fonction | Dépôt |
@@ -126,39 +124,75 @@ Les 37 modules suivants sont clonés lors du build. Les modules C++ sont intégr
 | 8 | `mod-player-bot-level-brackets` | Contrôle la distribution des niveaux des Playerbots par tranches. | [DustinHendrickson/mod-player-bot-level-brackets](https://github.com/DustinHendrickson/mod-player-bot-level-brackets) |
 | 9 | `mod-junk-to-gold` | Vend automatiquement les objets gris au moment où le joueur les ramasse. | [kadeshar/mod-junk-to-gold](https://github.com/kadeshar/mod-junk-to-gold) |
 | 10 | `mod-rare-drops` | Ajoute par SQL du butin vert ou bleu thématique aux 450 créatures rares classiques de Kalimdor et des Royaumes de l'Est. | [StraysFromPath/mod-rare-drops](https://github.com/StraysFromPath/mod-rare-drops) |
-| 11 | `mod-transmog` | Ajoute la transmogrification avec un PNJ placé côté joueurs près de l'entraîneur de portails dans chacune des huit capitales. | [azerothcore/mod-transmog](https://github.com/azerothcore/mod-transmog) |
-| 12 | `mod-reagent-bank-account` | Ajoute une banque de composants par personnage, sans limite, avec 12 PNJ placés côté joueurs dans les banques des capitales, de Shattrath et de Dalaran. | [Brian-Aldridge/mod-reagent-bank-account](https://github.com/Brian-Aldridge/mod-reagent-bank-account) |
+| 11 | `mod-transmog-plus` | Ajoute la transmogrification étendue (collections, formes, illusions et sacs) avec un PNJ placé dans chacune des huit capitales. | [buildthehomelab/wow-mod-transmog-plus](https://github.com/buildthehomelab/wow-mod-transmog-plus) |
+| 12 | `mod-reagent-bank-account` | Ajoute une banque de composants par personnage, avec stockage et exclusions configurables, et les PNJ placés dans les principales villes. | [buildthehomelab/mod-reagent-bank-account](https://github.com/buildthehomelab/mod-reagent-bank-account) |
 | 13 | `mod-daily-reset` | Ajoute directement la commande `.daily reset`, sans option de configuration, pour réinitialiser les quêtes journalières et instances du joueur. | [binboupan/mod-daily-reset](https://github.com/binboupan/mod-daily-reset) |
 | 14 | `mod-mount-scaling` | Fait évoluer progressivement la vitesse des montures avec le niveau. | [claudevandort/mod-mount-scaling](https://github.com/claudevandort/mod-mount-scaling) |
 | 15 | `mod-ale` | Fournit le moteur Lua AzerothCore utilisé par les scripts serveur. | [azerothcore/mod-ale](https://github.com/azerothcore/mod-ale) |
 | 16 | `mod-quest-loot-party` | Partage les objets de quête admissibles entre membres du groupe. | [pangolp/mod-quest-loot-party](https://github.com/pangolp/mod-quest-loot-party) |
 | 17 | `mod-TimeIsTime` | Permet de régler la vitesse du cycle jour/nuit. | [dunjeon/mod-TimeIsTime](https://github.com/dunjeon/mod-TimeIsTime) |
 | 18 | `mod-boss-announcer` | Annonce les victoires sur les boss ; les annonces de wipe sont désactivées dans le profil fourni. | [azerothcore/mod-boss-announcer](https://github.com/azerothcore/mod-boss-announcer) |
-| 19 | `mod-auto-revive` | Ressuscite automatiquement les comptes GM avant la mort, partout ou uniquement dans une zone configurée. | [azerothcore/mod-auto-revive](https://github.com/azerothcore/mod-auto-revive) |
-| 20 | `mod-duel-reset` | Réinitialise vie, ressources et cooldowns admissibles autour des duels. | [azerothcore/mod-duel-reset](https://github.com/azerothcore/mod-duel-reset) |
-| 21 | `NoProfessionLimit` | Autorise jusqu'aux 11 professions principales de WotLK ; la limite native du core est également fixée à 11. | [AlsoNotMehh/NoProfessionLimit](https://github.com/AlsoNotMehh/NoProfessionLimit) |
-| 22 | `mod-no-hearthstone-cooldown` | Supprime immédiatement le cooldown de la pierre de foyer. | [BytesGalore/mod-no-hearthstone-cooldown](https://github.com/BytesGalore/mod-no-hearthstone-cooldown) |
-| 23 | `mod-autofish` | Automatise la capture, le butin et la relance de la pêche. | [Flerp/mod-autofish](https://github.com/Flerp/mod-autofish) |
-| 24 | `mod-skip-dk-starting-area` | Permet, selon sa configuration, de passer automatiquement ou facultativement la zone de départ des chevaliers de la mort. | [d23monkey/mod-skip-dk-starting-area](https://github.com/d23monkey/mod-skip-dk-starting-area) |
-| 25 | `mod-gunship-skip` | Ajoute sur Muradin/Saurfang une option solo qui termine la Canonnière ICC, distribue son butin par courrier et téléporte après le combat. | [BlaMacfly/mod-gunship-skip](https://github.com/BlaMacfly/mod-gunship-skip) |
-| 26 | `portals-in-all-capitals` | Ajoute automatiquement par SQL 24 portails près des entraîneurs de mages et de portails des capitales. | [azerothcore/portals-in-all-capitals](https://github.com/azerothcore/portals-in-all-capitals) |
-| 27 | `mod-gain-honor-guard` | Accorde de l'honneur pour les gardes et/ou élites non gris, hors arène et joueur vivant, avec taux, annonces et partage de groupe configurables. | [azerothcore/mod-gain-honor-guard](https://github.com/azerothcore/mod-gain-honor-guard) |
-| 28 | `mod-dungeon-master` | Ajoute des donjons procéduraux jouables seul ou en groupe, avec difficulté, thèmes, mise à l'échelle, récompenses et mode roguelike à affixes. | [InstanceForge/mod-dungeon-master](https://github.com/InstanceForge/mod-dungeon-master) |
-| 29 | `mod-dungeon-questgivers` | Place un Émissaire des quêtes neutre à l'entrée de 49 donjons à cinq joueurs afin d'y proposer directement les quêtes associées ; les PNJ et lieux de restitution d'origine restent inchangés. | [and-elf/mod-dungeon-questgivers](https://github.com/and-elf/mod-dungeon-questgivers) |
-| 30 | `mod-auto-gather` | Récolte automatiquement à proximité les plantes, minerais et créatures dépeçables admissibles, tout en conservant les prérequis et gains de compétence. | [thanhtong89/mod-auto-gather](https://github.com/thanhtong89/mod-auto-gather) |
-| 31 | `DungeonRespawn` | Après libération de l'esprit dans un donjon ou raid classique, ressuscite le joueur à 50 % de vie et le replace à l'entrée enregistrée. | [riksbyville/DungeonRespawn](https://github.com/riksbyville/DungeonRespawn) |
-| 32 | `mod-multibot-bridge` | Fournit à l'addon client MultiBot-Chatless un pont structuré vers Playerbots afin d'actualiser son interface sans analyser les réponses du chat. | [Wishmaster117/mod-multibot-bridge](https://github.com/Wishmaster117/mod-multibot-bridge) |
-| 33 | `mod-npc-enchanter` | Ajoute un PNJ qui applique des enchantements à l'équipement, placé près des entraîneurs d'enchantement dans les huit capitales. | [azerothcore/mod-npc-enchanter](https://github.com/azerothcore/mod-npc-enchanter) |
-| 34 | `mod-optimal-bot-raid` | Assemble et téléporte des groupes ou raids optimisés de 5 à 40 Playerbots avec répartition des rôles, synergies de buffs et niveaux configurables via `.botraid`. | [barnaclebarry/mod-optimal-bot-raid](https://github.com/barnaclebarry/mod-optimal-bot-raid) |
-| 35 | `mod-level-one-mounts` | Rend la compétence de monte initiale et une sélection de montures terrestres accessibles dès le niveau 1 à prix réduit. | [tomcoffingiii/mod-level-one-mounts](https://github.com/tomcoffingiii/mod-level-one-mounts) |
-| 36 | `mod-npc-all-mounts` | Ajoute « The Mountain », un PNJ capable d'enseigner les montures disponibles, placé près de l'entraîneur de portails dans chacune des huit capitales. | [azerothcore/mod-npc-all-mounts](https://github.com/azerothcore/mod-npc-all-mounts) |
-| 37 | `mod-increased-ghost-speed` | Multiplie par `2` la vitesse de course et de nage des joueurs libérés en fantôme, sans modifier leur vitesse lorsqu'ils sont vivants. | [TheTollski/mod-increased-ghost-speed](https://github.com/TheTollski/mod-increased-ghost-speed) |
+| 19 | `mod-duel-reset` | Réinitialise vie, ressources et cooldowns admissibles autour des duels. | [azerothcore/mod-duel-reset](https://github.com/azerothcore/mod-duel-reset) |
+| 20 | `NoProfessionLimit` | Autorise jusqu'aux 11 professions principales de WotLK ; la limite native du core est également fixée à 11. | [AlsoNotMehh/NoProfessionLimit](https://github.com/AlsoNotMehh/NoProfessionLimit) |
+| 21 | `mod-no-hearthstone-cooldown` | Supprime immédiatement le cooldown de la pierre de foyer. | [BytesGalore/mod-no-hearthstone-cooldown](https://github.com/BytesGalore/mod-no-hearthstone-cooldown) |
+| 22 | `mod-autofish` | Automatise la capture, le butin et la relance de la pêche. | [Flerp/mod-autofish](https://github.com/Flerp/mod-autofish) |
+| 23 | `mod-skip-dk-starting-area` | Permet, selon sa configuration, de passer automatiquement ou facultativement la zone de départ des chevaliers de la mort. | [d23monkey/mod-skip-dk-starting-area](https://github.com/d23monkey/mod-skip-dk-starting-area) |
+| 24 | `mod-gunship-skip` | Ajoute sur Muradin/Saurfang une option solo qui termine la Canonnière ICC, distribue son butin par courrier et téléporte après le combat. | [BlaMacfly/mod-gunship-skip](https://github.com/BlaMacfly/mod-gunship-skip) |
+| 25 | `portals-in-all-capitals` | Ajoute automatiquement par SQL 24 portails près des entraîneurs de mages et de portails des capitales. | [azerothcore/portals-in-all-capitals](https://github.com/azerothcore/portals-in-all-capitals) |
+| 26 | `mod-gain-honor-guard` | Accorde de l'honneur pour les gardes et/ou élites non gris, hors arène et joueur vivant, avec taux, annonces et partage de groupe configurables. | [azerothcore/mod-gain-honor-guard](https://github.com/azerothcore/mod-gain-honor-guard) |
+| 27 | `mod-dungeon-master` | Ajoute des donjons procéduraux jouables seul ou en groupe, avec difficulté, thèmes, mise à l'échelle, récompenses et mode roguelike à affixes. | [InstanceForge/mod-dungeon-master](https://github.com/InstanceForge/mod-dungeon-master) |
+| 28 | `mod-dungeon-questgivers` | Place un Émissaire des quêtes neutre à l'entrée de 49 donjons à cinq joueurs afin d'y proposer directement les quêtes associées ; les PNJ et lieux de restitution d'origine restent inchangés. | [and-elf/mod-dungeon-questgivers](https://github.com/and-elf/mod-dungeon-questgivers) |
+| 29 | `mod-auto-gather` | Récolte automatiquement à proximité les plantes, minerais et créatures dépeçables admissibles, tout en conservant les prérequis et gains de compétence. | [thanhtong89/mod-auto-gather](https://github.com/thanhtong89/mod-auto-gather) |
+| 30 | `DungeonRespawn` | Après libération de l'esprit dans un donjon ou raid classique, ressuscite le joueur à 50 % de vie et le replace à l'entrée enregistrée. | [riksbyville/DungeonRespawn](https://github.com/riksbyville/DungeonRespawn) |
+| 31 | `mod-multibot-bridge` | Fournit à l'addon client MultiBot-Chatless un pont structuré vers Playerbots afin d'actualiser son interface sans analyser les réponses du chat. | [Wishmaster117/mod-multibot-bridge](https://github.com/Wishmaster117/mod-multibot-bridge) |
+| 32 | `mod-npc-enchanter` | Ajoute un PNJ qui applique des enchantements à l'équipement, placé près des entraîneurs d'enchantement dans les huit capitales. | [azerothcore/mod-npc-enchanter](https://github.com/azerothcore/mod-npc-enchanter) |
+| 33 | `mod-optimal-bot-raid` | Assemble et téléporte des groupes ou raids optimisés de 5 à 40 Playerbots avec répartition des rôles, synergies de buffs et niveaux configurables via `.botraid`. | [barnaclebarry/mod-optimal-bot-raid](https://github.com/barnaclebarry/mod-optimal-bot-raid) |
+| 34 | `mod-level-one-mounts` | Rend la compétence de monte initiale et une sélection de montures terrestres accessibles dès le niveau 1 à prix réduit. | [tomcoffingiii/mod-level-one-mounts](https://github.com/tomcoffingiii/mod-level-one-mounts) |
+| 35 | `mod-npc-all-mounts` | Ajoute « The Mountain », un PNJ capable d'enseigner les montures disponibles, placé près de l'entraîneur de portails dans chacune des huit capitales. | [azerothcore/mod-npc-all-mounts](https://github.com/azerothcore/mod-npc-all-mounts) |
+| 36 | `mod-increased-ghost-speed` | Multiplie par `2` la vitesse de course et de nage des joueurs libérés en fantôme, sans modifier leur vitesse lorsqu'ils sont vivants. | [TheTollski/mod-increased-ghost-speed](https://github.com/TheTollski/mod-increased-ghost-speed) |
+| 37 | `mod-dungeon-clear` | Permet à un tank Playerbot de conduire automatiquement le groupe dans les donjons : navigation, pulls, boss, portes, butin, repos et récupération après combat. | [jrad7/mod-dungeon-clear](https://github.com/jrad7/mod-dungeon-clear) |
+| 38 | `mod-guildhouse` | Ajoute une maison en phase propre à chaque guilde, achetable puis aménageable avec PNJ, services et portails. | [azerothcore/mod-guildhouse](https://github.com/azerothcore/mod-guildhouse) |
+| 39 | `mod-player-bot-guildhouse` | Envoie périodiquement des Playerbots de guilde dans leur maison et les en fait ressortir sans déplacer les bots des guildes sans joueur humain connecté. | [DustinHendrickson/mod-player-bot-guildhouse](https://github.com/DustinHendrickson/mod-player-bot-guildhouse) |
+| 40 | `mod-individual-progression` | Réintroduit une progression Vanilla, TBC puis WotLK individuelle par personnage, avec phases, niveaux plafonnés, attunements et contenu historique. | [ZhengPeiRu21/mod-individual-progression](https://github.com/ZhengPeiRu21/mod-individual-progression) |
+| 41 | `mod-assistant` | Ajoute un PNJ Assistant dans les capitales, offrant héritages, glyphes, gemmes, consommables, changements de personnage, métiers, trajets aériens et réinitialisation d’instances selon configuration. | [noisiver/mod-assistant](https://github.com/noisiver/mod-assistant) |
+| 42 | `mod-flightpath-discovery` | Ajoute des tableaux près des maîtres de vol pour acheter et apprendre des trajets voisins configurés, sans téléportation. | [bl1tzkr13g/mod-flightpath-discovery](https://github.com/bl1tzkr13g/mod-flightpath-discovery) |
+| 43 | `mod-forever-hunter` | Ajoute l’échelle des familiers, Lone Wolf, Summon Hawk, la retenue des familiers en donjon et les effets Hunter de Shadowstrike/Thunderstrike. | [buildthehomelab/wow-mod-forever-hunter](https://github.com/buildthehomelab/wow-mod-forever-hunter) |
+| 44 | `mod-raid-clear` | Ajoute des stratégies Playerbot spécialisées pour les raids, les boss et les mécaniques de raid. | [buildthehomelab/wow-mod-raid-clear](https://github.com/buildthehomelab/wow-mod-raid-clear) |
+| 44a | `mod-lost-legendaries` | Réintroduit plusieurs objets légendaires oubliés dans les raids et quêtes. | [buildthehomelab/wow-mod-lost-legendaries](https://github.com/buildthehomelab/wow-mod-lost-legendaries) |
+| 44b | `mod-forever-rogue` | Conserve les points de combo du voleur lors des changements de cible. | [buildthehomelab/wow-mod-forever-rogue](https://github.com/buildthehomelab/wow-mod-forever-rogue) |
+| 44c | `mod-forever-periodic-crit` | Autorise les critiques des ticks DoT/HoT selon les règles WoW Forever. | [buildthehomelab/wow-mod-forever-periodic-crit](https://github.com/buildthehomelab/wow-mod-forever-periodic-crit) |
+| 45 | `mod-lfg-progression` | Verrouille la file LFG selon la progression Vanilla/TBC/WotLK du personnage et des Playerbots. | [buildthehomelab/wow-mod-lfg-progression](https://github.com/buildthehomelab/wow-mod-lfg-progression) |
+| 46 | `mod-forever-journal` | Ajoute un journal en jeu des donjons, monstres, quêtes, butin, apparences et lore. Remplace `mod-npc-finder`. | [buildthehomelab/wow-mod-forever-journal](https://github.com/buildthehomelab/wow-mod-forever-journal) |
+| 47 | `mod-beast-collection` | Ajoute la collection, le dex et les récompenses de familiers de chasseur. | [buildthehomelab/wow-mod-beast-collection](https://github.com/buildthehomelab/wow-mod-beast-collection) |
+| 48 | `mod-playerbots-pvp-life` | Anime les Playerbots avec du PvP mondial, des fronts, des défenses de capitales et des duels. | [vrzgames/mod-playerbots-pvp-life](https://github.com/vrzgames/mod-playerbots-pvp-life) |
+| 49 | `mod-playerbots-city-life` | Anime les capitales et villes avec des Playerbots résidents, activités, déplacements et points d’intérêt. | [vrzgames/mod-playerbots-city-life](https://github.com/vrzgames/mod-playerbots-city-life) |
+| 50 | `mod-retail-ah` | Remplace la fenêtre d’hôtel des ventes par une interface retail, avec filtres, progression individuelle, transmog, registre des ventes et compatibilité AHBot. | [buildthehomelab/wow-mod-retail-ah](https://github.com/buildthehomelab/wow-mod-retail-ah) |
+| 51 | `mod-retail-professions` | Remplace la fenêtre des métiers par une interface retail, avec recettes, suivi, sources, milling/prospecting et statistiques de craft. | [buildthehomelab/wow-mod-retail-professions](https://github.com/buildthehomelab/wow-mod-retail-professions) |
+| 52 | `mod-black-market` | Ajoute un hôtel des ventes noir avec enchères quotidiennes, montures, compagnons et objets rares, accessible auprès de Mister Chu à Baie-du-Butin. | [buildthehomelab/wow-mod-black-market](https://github.com/buildthehomelab/wow-mod-black-market) |
+
+### Maisons de guilde
+
+Les réglages officiels des deux modules sont copiés automatiquement au premier
+démarrage dans le volume de configuration, comme ceux des autres modules. Une
+maison coûte 1000 po et son propriétaire peut acheter les services avec les
+tarifs par défaut. Les Playerbots ne s'y rendent que si un joueur réel de leur
+guilde est connecté ; le cycle est de 120 secondes, avec cinq bots au plus par
+entrée ou sortie et les journaux de diagnostic désactivés. Le PNJ d'achat (`500030`) est placé
+automatiquement près des entraîneurs de portails des huit capitales : aucune
+commande GM manuelle n'est nécessaire.
 
 ### Addons clients
 
 - `mod-multibot-bridge` nécessite l'addon
   [MultiBot-Chatless](https://github.com/Wishmaster117/MultiBot-Chatless),
   installé côté client dans `Interface/AddOns/MultiBot`.
+- `mod-retail-ah` nécessite l'addon client `RetailAH` dans
+  `Interface/AddOns/RetailAH`.
+- `mod-retail-professions` nécessite l'addon client `RetailProfessions` dans
+  `Interface/AddOns/RetailProfessions`.
+- `mod-black-market` nécessite l'addon client `BlackMarket` dans
+  `Interface/AddOns/BlackMarket`. Le PNJ Mister Chu est créé par le SQL du module ;
+  utilisez `.npc move` si vous souhaitez changer son emplacement.
 
 Certains dépôts utilisent encore des API AzerothCore anciennes. Les adaptations
 de compatibilité nécessaires sont appliquées automatiquement et de façon
@@ -168,7 +202,7 @@ reproductible par `docker/build-source.sh` et le `Dockerfile`.
 
 | Script | Activation | Fonction |
 |---|---|---|
-| [`starter_boost.lua`](docker/lua_scripts/starter_boost.lua) | `.starterboost` | Offre une seule fois par personnage de niveau 10 maximum l'équipement héritage multi-spécialisations de `mod-startergear`, quatre sacs glaciaires de 22 emplacements, la monte, une monture et 250 pièces d'or. L'utilisation est enregistrée dans `acore_characters.custom_starter_boost_claims`. |
+| [`starter_boost.lua`](docker/lua_scripts/starter_boost.lua) | `.starterboost` / `.startbooster` | Offre une seule fois par personnage de niveau 10 maximum — niveau 55 pour un chevalier de la mort — l'équipement héritage multi-spécialisations de `mod-startergear`, les compétences d'armes nécessaires, 200 flèches avec chaque arc fourni, quatre sacs glaciaires de 22 emplacements, la monte, une monture et 250 pièces d'or. L'utilisation est enregistrée dans `acore_characters.custom_starter_boost_claims`. |
 | [`SitMeansRest.lua`](https://github.com/Brytenwally/SitMeansRest) | `/sit` hors combat | Applique une régénération de 20 secondes, annulée dès que le personnage se déplace. |
 | [`LootArbiter.lua`](https://github.com/Brytenwally/Loot-Arbiter) | Automatique après un jet de groupe ; diagnostic avec `.lootspec` | Attribue le butin au membre pour lequel il représente la meilleure amélioration. Le hook général d'obtention d'objet est désactivé afin de ne pas redistribuer les achats, courriers et récompenses hors jet de groupe. |
 
@@ -317,16 +351,19 @@ podman compose exec database mysql -uroot -p
 ## Configuration AzerothCore et modules
 
 Les réglages versionnés se trouvent dans `docker/acore.env`. Ce profil contient
-maintenant l'intégralité des réglages statiques de l'ancienne installation
-le profil Compose (254 variables, plus les secrets injectés par Compose). Le point devient
+les réglages statiques du profil Compose (plus les secrets injectés par
+Compose). Le point devient
 un underscore, les transitions minuscule/majuscule reçoivent un underscore et
 la clé est préfixée par `AC_` :
 
 ```text
 Rate.XP.Kill                  -> AC_RATE_XP_KILL
-AiPlayerbot.MinRandomBots     -> AC_AI_PLAYERBOT_MIN_RANDOM_BOTS
+Playerbots.MinRandomBots      -> AC_PLAYERBOTS_MIN_RANDOM_BOTS
 AutoBalance.MinPlayers        -> AC_AUTO_BALANCE_MIN_PLAYERS
 ```
+
+Les valeurs `AC_*` sont autoritaires et sont réappliquées au démarrage ;
+modifiez donc `docker/acore.env`, pas le fichier du volume `config`.
 
 Après une modification :
 
@@ -400,9 +437,12 @@ La recréation des conteneurs après la reconstruction garantit l'utilisation
 des nouvelles images. Les volumes de base de données et de données client sont
 conservés par `podman compose down`.
 
-Les dépendances externes sont suivies par leurs branches courantes. Une
+Les dépendances externes sont verrouillées par commit dans `docker/sources.lock`. Une
 reconstruction avec `--pull --no-cache` récupère les versions amont disponibles ;
 les changements incompatibles peuvent nécessiter une adaptation locale.
+
+MySQL utilise maintenant `innodb_flush_log_at_trx_commit=1` pour éviter de
+perdre des transactions validées lors d'un arrêt brutal.
 
 ## Dépannage
 

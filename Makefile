@@ -1,28 +1,30 @@
+COMPOSE ?= ./scripts/compose.sh
+
 .PHONY: init build up down restart logs status console backup health metrics diagnose watch bots-help clean-logs account gm ahbot-bootstrap ahbot update clean
 
 init:
 	./scripts/init-env.sh
 
 build:
-	docker compose build
+	$(COMPOSE) build
 
 up:
-	docker compose up -d --build
+	$(COMPOSE) up -d --build
 
 down:
-	docker compose down
+	$(COMPOSE) down
 
 restart:
-	docker compose restart authserver worldserver
+	$(COMPOSE) restart authserver worldserver
 
 logs:
-	docker compose logs -f --tail=200 authserver worldserver
+	$(COMPOSE) logs -f --tail=200 authserver worldserver
 
 status:
-	docker compose ps
+	$(COMPOSE) ps
 
 console:
-	docker attach $$(docker compose ps -q worldserver)
+	$(COMPOSE) attach worldserver
 
 backup:
 	./scripts/backup-db.sh
@@ -58,8 +60,8 @@ ahbot:
 	./scripts/setup-ahbot.sh "$(GUIDS)"
 
 update:
-	docker compose build --pull --no-cache
-	docker compose up -d
+	$(COMPOSE) build --pull --no-cache
+	$(COMPOSE) up -d
 
 clean:
-	docker compose down --remove-orphans
+	$(COMPOSE) down --remove-orphans

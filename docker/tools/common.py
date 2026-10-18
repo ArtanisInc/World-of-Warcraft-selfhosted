@@ -77,6 +77,16 @@ def scalar(sql: str, database: str | None = None, default: str = "") -> str:
     return value.splitlines()[0].strip() if value else default
 
 
+def mysql_transaction(sql: str, database: str) -> None:
+    """Run local DML as one all-or-nothing InnoDB transaction.
+
+    mysql exits on statement failure; disconnecting before COMMIT rolls back the
+    transaction. Keep DDL out of this helper because MySQL commits DDL
+    implicitly.
+    """
+    mysql(f"START TRANSACTION; {sql.rstrip(';')}; COMMIT", database, capture=False)
+
+
 def sql_literal(value: str) -> str:
     return "'" + value.replace("\\", "\\\\").replace("'", "''") + "'"
 

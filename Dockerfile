@@ -5,12 +5,23 @@ ARG UBUNTU_VERSION=26.04
 FROM docker.io/library/ubuntu:${UBUNTU_VERSION} AS source
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG ACORE_REPO=https://github.com/mod-playerbots/azerothcore-wotlk.git
-ARG ACORE_BRANCH=Playerbot
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git \
-    && rm -rf /var/lib/apt/lists/* \
-    && git clone --depth 1 --branch "$ACORE_BRANCH" "$ACORE_REPO" /azerothcore
+# Source revisions are committed in docker/sources.lock. Do not clone mutable
+# branch heads here: the lock is the sole authority for the core and modules.
+COPY docker/sources.lock /usr/local/share/acore-sources.lock
+RUN set -eux; \
+    apt-get update; apt-get install -y --no-install-recommends ca-certificates git; \
+    rm -rf /var/lib/apt/lists/*; \
+    core_line=$(awk -F ';' '$1 == "core" { print; exit }' /usr/local/share/acore-sources.lock); \
+    test -n "$core_line"; \
+    core_url=$(printf '%s\n' "$core_line" | cut -d ';' -f2); \
+    core_commit=$(printf '%s\n' "$core_line" | cut -d ';' -f4); \
+    test "${#core_commit}" = 40; \
+    git init /azerothcore; \
+    git -C /azerothcore remote add origin "$core_url"; \
+    git -C /azerothcore fetch --depth=1 origin "$core_commit"; \
+    git -C /azerothcore checkout --detach --force FETCH_HEAD; \
+    test "$(git -C /azerothcore rev-parse HEAD)" = "$core_commit"
 
 FROM source AS build
 
@@ -26,6 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY docker/build-source.sh /usr/local/bin/build-source
+COPY docker/sources.lock /usr/local/share/acore-sources.lock
 COPY docker/patch-gunship.py /usr/local/bin/patch-gunship.py
 
 RUN --mount=type=cache,target=/root/.cache/ccache,sharing=locked \
@@ -51,7 +63,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && if getent passwd ubuntu >/dev/null; then userdel -r ubuntu; fi \
     && groupadd --gid "$GROUP_ID" acore \
     && useradd --uid "$USER_ID" --gid "$GROUP_ID" --create-home --shell /bin/bash acore \
-    && mkdir -p /azerothcore/env/dist/{bin,data,etc,logs,temp} /azerothcore/env/ref/etc \
+    && mkdir -p /azerothcore/env/dist/bin /azerothcore/env/dist/data \
+         /azerothcore/env/dist/etc /azerothcore/env/dist/logs \
+         /azerothcore/env/dist/temp /azerothcore/env/ref/etc \
     && chown -R acore:acore /azerothcore
 
 COPY --from=build --chown=acore:acore /azerothcore/env/dist/etc/ /azerothcore/env/ref/etc/

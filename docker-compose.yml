@@ -4,8 +4,6 @@ x-acore-build: &acore-build
   context: .
   dockerfile: Dockerfile
   args:
-    ACORE_REPO: ${ACORE_REPO:-https://github.com/mod-playerbots/azerothcore-wotlk.git}
-    ACORE_BRANCH: ${ACORE_BRANCH:-Playerbot}
     ALE_LUA_VERSION: ${ALE_LUA_VERSION:-lua52}
     BUILD_TYPE: ${BUILD_TYPE:-Release}
     BUILD_JOBS: ${BUILD_JOBS:-4}
@@ -19,6 +17,15 @@ x-acore-environment: &acore-environment
   AC_PLAYERBOTS_DATABASE_INFO: database;3306;${DB_USER:-acore};${DB_PASSWORD};acore_playerbots
   AC_SOAP_USER: ${SOAP_USER:?Set SOAP_USER in .env}
   AC_SOAP_PASS: ${SOAP_PASSWORD:?Set SOAP_PASSWORD in .env}
+  TZ: ${TZ:-Europe/Paris}
+
+x-acore-migration-environment: &acore-migration-environment
+  # Database import and post-import migrations use a separate DDL-capable
+  # account. Its password is never mounted into runtime server containers.
+  AC_LOGIN_DATABASE_INFO: database;3306;${DB_MIGRATION_USER:-acore_migrator};${DB_MIGRATION_PASSWORD:?Run scripts/init-env.sh to set DB_MIGRATION_PASSWORD};acore_auth
+  AC_WORLD_DATABASE_INFO: database;3306;${DB_MIGRATION_USER:-acore_migrator};${DB_MIGRATION_PASSWORD};acore_world
+  AC_CHARACTER_DATABASE_INFO: database;3306;${DB_MIGRATION_USER:-acore_migrator};${DB_MIGRATION_PASSWORD};acore_characters
+  AC_PLAYERBOTS_DATABASE_INFO: database;3306;${DB_MIGRATION_USER:-acore_migrator};${DB_MIGRATION_PASSWORD};acore_playerbots
   TZ: ${TZ:-Europe/Paris}
 
 x-logging: &default-logging
@@ -42,7 +49,9 @@ services:
       - --innodb-buffer-pool-size=${MYSQL_INNODB_BUFFER_POOL_SIZE:-4G}
       - --skip-log-bin
       - --innodb-log-buffer-size=32M
-      - --innodb-flush-log-at-trx-commit=2
+      # Durability over the small fsync cost: committed player/database
+      # changes survive a host or container crash.
+      - --innodb-flush-log-at-trx-commit=1
       - --innodb-flush-method=O_DIRECT
       - --innodb-io-capacity=500
       - --innodb-io-capacity-max=2500
@@ -56,6 +65,9 @@ services:
       - --read-buffer-size=256K
       - --read-rnd-buffer-size=512K
       - --transaction-isolation=READ-COMMITTED
+      # Legacy module loot queries are not GROUP BY-clean. Keep strict writes
+      # while allowing their deterministic reference lookups on MySQL 8.
+      - --sql-mode=STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
     volumes:
       - database:/var/lib/mysql
     networks: [acore]
@@ -73,6 +85,8 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       DB_USER: ${DB_USER:-acore}
+      DB_MIGRATION_USER: ${DB_MIGRATION_USER:-acore_migrator}
+      DB_MIGRATION_PASSWORD: ${DB_MIGRATION_PASSWORD:?Run scripts/init-env.sh to set DB_MIGRATION_PASSWORD}
       DB_PASSWORD: ${DB_PASSWORD}
     volumes:
       - ./docker/mysql-init.sh:/usr/local/bin/mysql-init:ro,Z
@@ -92,15 +106,15 @@ services:
     user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
     environment:
       DB_HOST: database
-      DB_USER: ${DB_USER:-acore}
-      DB_PASSWORD: ${DB_PASSWORD}
+      DB_USER: ${DB_MIGRATION_USER:-acore_migrator}
+      DB_PASSWORD: ${DB_MIGRATION_PASSWORD:?Run scripts/init-env.sh to set DB_MIGRATION_PASSWORD}
       DATABASE_MIGRATION_STATE_FILE: /azerothcore/env/dist/etc/.database-preflight.sha256
     entrypoint: [python3, /azerothcore/tools/database_preflight.py]
     volumes:
       - config:/azerothcore/env/dist/etc:z
     depends_on:
-      database:
-        condition: service_healthy
+      database-init:
+        condition: service_completed_successfully
     networks: [acore]
 
   client-data:
@@ -111,6 +125,9 @@ services:
     restart: "no"
     volumes:
       - client-data:/data:z
+    # Keep an explicit readiness marker in the shared volume.  The worldserver
+    # cannot use Compose's completed-job dependency reliably under Podman, so
+    # its entrypoint waits for this marker instead of racing the download.
     command: [bash, -c, "source /azerothcore/apps/installer/includes/functions.sh && inst_download_client_data && touch /data/.client-data.ready"]
 
   db-import:
@@ -121,13 +138,13 @@ services:
     restart: "no"
     env_file: [docker/acore.env]
     environment:
-      <<: *acore-environment
+      <<: *acore-migration-environment
     volumes:
       - config:/azerothcore/env/dist/etc:z
       - logs:/azerothcore/env/dist/logs:z
     depends_on:
-      database:
-        condition: service_healthy
+      database-preflight:
+        condition: service_completed_successfully
     networks: [acore]
 
   database-post-import:
@@ -140,19 +157,18 @@ services:
     user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
     environment:
       DB_HOST: database
-      DB_USER: ${DB_USER:-acore}
-      DB_PASSWORD: ${DB_PASSWORD}
+      DB_USER: ${DB_MIGRATION_USER:-acore_migrator}
+      DB_PASSWORD: ${DB_MIGRATION_PASSWORD:?Run scripts/init-env.sh to set DB_MIGRATION_PASSWORD}
       SOAP_USER: ${SOAP_USER:?Set SOAP_USER in .env}
       SOAP_PASSWORD: ${SOAP_PASSWORD:?Set SOAP_PASSWORD in .env}
-      DATABASE_MIGRATION_STATE_FILE: /azerothcore/env/dist/etc/.database-preflight.sha256
       BETTER_PROFESSIONS_HERBALISM_MULTIPLIER: ${BETTER_PROFESSIONS_HERBALISM_MULTIPLIER:-6}
       BETTER_PROFESSIONS_MINING_MULTIPLIER: ${BETTER_PROFESSIONS_MINING_MULTIPLIER:-6}
     entrypoint: [python3, /azerothcore/tools/database_post_import.py]
     volumes:
       - config:/azerothcore/env/dist/etc:z
     depends_on:
-      database:
-        condition: service_healthy
+      db-import:
+        condition: service_completed_successfully
     networks: [acore]
 
   realm-init:
@@ -163,10 +179,14 @@ services:
       DB_USER: ${DB_USER:-acore}
       DB_PASSWORD: ${DB_PASSWORD}
       REALMLIST_IP: ${REALMLIST_IP:-127.0.0.1}
+      WORLD_PORT: ${WORLD_PORT:-8085}
     volumes:
       - ./docker/realm-init.sh:/usr/local/bin/realm-init:ro,Z
       - config:/state:z
     entrypoint: [bash, /usr/local/bin/realm-init]
+    # Do not depend on the exited migration containers: Podman attempts to
+    # restart them on every `compose up` and reports "container state
+    # improper".  realm-init waits for the post-import marker itself.
     depends_on:
       database:
         condition: service_healthy
@@ -187,6 +207,9 @@ services:
     volumes:
       - config:/azerothcore/env/dist/etc:z
       - logs:/azerothcore/env/dist/logs:z
+    # Podman cannot reliably handle Compose's service_completed_successfully
+    # dependencies: it tries to restart exited migration jobs and fails with
+    # "container state improper".  Auth only needs the live database service.
     depends_on:
       database:
         condition: service_healthy
@@ -211,6 +234,7 @@ services:
     env_file: [docker/acore.env]
     environment:
       <<: *acore-environment
+      MALLOC_ARENA_MAX: "4"
     ports:
       - ${BIND_ADDRESS:-127.0.0.1}:${WORLD_PORT:-8085}:8085
       - 127.0.0.1:${SOAP_PORT:-7878}:7878
@@ -218,11 +242,12 @@ services:
       - config:/azerothcore/env/dist/etc:z
       - logs:/azerothcore/env/dist/logs:z
       - client-data:/azerothcore/env/dist/data:ro,z
+    # Podman treats completed-job dependencies as restartable.  The entrypoint
+    # waits on explicit readiness markers instead, preserving ordering without
+    # triggering Podman's "container state improper" failure.
     depends_on:
-      authserver:
+      database:
         condition: service_healthy
-      database-post-import:
-        condition: service_completed_successfully
     networks: [acore]
     logging: *default-logging
     healthcheck:
