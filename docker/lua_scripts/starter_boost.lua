@@ -119,9 +119,11 @@ local function NewClaimToken(guid)
 end
 
 local function ReserveClaim(guid, token)
-    -- INSERT IGNORE makes exactly one token durable. The following comparison
-    -- establishes whether this invocation owns that durable reservation.
-    CharDBExecute(
+    -- Execute synchronously: CharDBExecute is asynchronous, so selecting
+    -- immediately after it can miss our own insert and falsely reject a new
+    -- claim. INSERT IGNORE still makes exactly one token durable across
+    -- simultaneous requests; the SELECT confirms which request owns it.
+    CharDBQuery(
         string.format(
             "INSERT IGNORE INTO `%s` (`guid`, `claim_token`) VALUES (%u, '%s')",
             CLAIM_TABLE,
@@ -137,7 +139,7 @@ end
 
 local function ReleaseClaim(guid, token)
     -- A losing concurrent request must never remove the winner's reservation.
-    CharDBExecute(
+    CharDBQuery(
         string.format(
             "DELETE FROM `%s` WHERE `guid`=%u AND `claim_token`='%s'",
             CLAIM_TABLE,
